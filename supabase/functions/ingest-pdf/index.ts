@@ -144,14 +144,35 @@ serve(async (req) => {
     await updateManualStatus(supabase, manualId, "processing");
 
     console.log(`Processing PDF for manual ${manualId}`);
+
+    // Fetch PDF and convert to base64 (required for PDF processing)
+    const pdfResponse = await fetch(pdfUrl);
+    if (!pdfResponse.ok) {
+      throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
+    }
+
+    const pdfBuffer = await pdfResponse.arrayBuffer();
+    const pdfSize = pdfBuffer.byteLength;
+    console.log(`PDF size: ${(pdfSize / 1024 / 1024).toFixed(2)} MB`);
+
+    // Convert to base64 in chunks to handle larger files
+    const bytes = new Uint8Array(pdfBuffer);
+    let base64Pdf = '';
+    const chunkSize = 32768; // Process in 32KB chunks
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      base64Pdf += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    base64Pdf = btoa(base64Pdf);
+
     console.log("Extracting text from PDF using AI...");
 
-    // Use Gemini Pro with URL directly to avoid memory issues
+    // Use Gemini Pro for extraction - must use file type with base64 for PDFs
     const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-pro",
@@ -161,25 +182,24 @@ serve(async (req) => {
             content: [
               {
                 type: "text",
-                text: `Extract ALL text content from this PDF document. This is a robotics competition game manual.
+                text: `Extract ALL text content from this PDF document. 
 
-CRITICAL INSTRUCTIONS:
-- Extract EVERYTHING verbatim - do not summarize or paraphrase
-- Preserve ALL rule numbers (like G1, G2, SG1, SG2, SC1, etc.)
-- Preserve section numbers and headers (like 1.1, 2.3.4, etc.)
-- Include page numbers where visible (format as [Page X])
-- Preserve table content (format as text with clear column separation)
-- Keep bullet points and numbered lists intact
-- Preserve emphasis (bold, italics) using markdown (**bold**, *italic*)
-- Include ALL definitions, notes, and warnings
-- Keep the hierarchical structure with proper indentation
+Important instructions:
+- Extract every single word, number, and symbol from the document
+- Preserve the document structure with proper headings and sections
+- Mark page breaks with "--- Page X ---" where X is the page number
+- Keep tables formatted using markdown table syntax
+- Preserve bullet points and numbered lists
+- Include all figure captions and footnotes
+- Do not summarize or skip any content
 
 Output the complete extracted text maintaining the document structure.`
               },
               {
-                type: "image_url",
-                image_url: {
-                  url: pdfUrl
+                type: "file",
+                file: {
+                  filename: "document.pdf",
+                  file_data: `data:application/pdf;base64,${base64Pdf}`
                 }
               }
             ]
