@@ -1,16 +1,25 @@
-import { User, Bot } from "lucide-react";
+import { User, Bot, Image as ImageIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
   isStreaming?: boolean;
   onFollowUpClick?: (question: string) => void;
+  pageImages?: string[];
 }
 
-export const ChatMessage = memo(function ChatMessage({ role, content, isStreaming, onFollowUpClick }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ 
+  role, 
+  content, 
+  isStreaming, 
+  onFollowUpClick,
+  pageImages 
+}: ChatMessageProps) {
   const isUser = role === "user";
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // Parse follow-up questions from content
   const parseFollowUps = (text: string) => {
@@ -33,6 +42,13 @@ export const ChatMessage = memo(function ChatMessage({ role, content, isStreamin
   };
 
   const { mainContent, followUps } = isUser ? { mainContent: content, followUps: [] } : parseFollowUps(content);
+
+  // Filter out failed images
+  const validImages = pageImages?.filter(url => !failedImages.has(url)) || [];
+
+  const handleImageError = (url: string) => {
+    setFailedImages(prev => new Set(prev).add(url));
+  };
 
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -67,6 +83,11 @@ export const ChatMessage = memo(function ChatMessage({ role, content, isStreamin
                       ul: ({ children }) => <ul className="list-disc pl-4 my-1.5">{children}</ul>,
                       ol: ({ children }) => <ol className="list-decimal pl-4 my-1.5">{children}</ol>,
                       li: ({ children }) => <li className="my-0.5">{children}</li>,
+                      blockquote: ({ children }) => (
+                        <blockquote className="border-l-2 border-primary/50 pl-3 my-2 italic bg-primary/5 py-1 rounded-r">
+                          {children}
+                        </blockquote>
+                      ),
                     }}
                   >
                     {mainContent}
@@ -83,6 +104,63 @@ export const ChatMessage = memo(function ChatMessage({ role, content, isStreamin
             )}
           </div>
         </div>
+        
+        {/* Page images */}
+        {!isUser && validImages.length > 0 && !isStreaming && (
+          <div className="mt-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Referenced pages from the manual</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {validImages.map((url, idx) => {
+                const pageMatch = url.match(/page_(\d+)\.jpg/);
+                const pageNum = pageMatch ? pageMatch[1] : idx + 1;
+                
+                return (
+                  <button
+                    key={url}
+                    onClick={() => setExpandedImage(expandedImage === url ? null : url)}
+                    className="relative group"
+                  >
+                    <img
+                      src={url}
+                      alt={`Page ${pageNum}`}
+                      className="w-24 h-32 object-cover rounded-lg border border-border hover:border-primary/50 transition-colors cursor-pointer"
+                      onError={() => handleImageError(url)}
+                    />
+                    <div className="absolute bottom-1 left-1 bg-background/80 backdrop-blur-sm text-xs px-1.5 py-0.5 rounded">
+                      Page {pageNum}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            
+            {/* Expanded image view */}
+            {expandedImage && (
+              <div 
+                className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
+                onClick={() => setExpandedImage(null)}
+              >
+                <div className="relative max-w-4xl max-h-[90vh] overflow-auto">
+                  <img
+                    src={expandedImage}
+                    alt="Expanded page"
+                    className="rounded-lg shadow-2xl max-w-full max-h-[85vh] object-contain"
+                  />
+                  <button
+                    onClick={() => setExpandedImage(null)}
+                    className="absolute top-2 right-2 bg-background/90 text-foreground rounded-full p-2 hover:bg-background transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
         {/* Follow-up questions */}
         {!isUser && followUps.length > 0 && !isStreaming && (
           <div className="mt-2 flex flex-wrap gap-1.5">
