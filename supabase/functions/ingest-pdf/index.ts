@@ -144,25 +144,9 @@ serve(async (req) => {
     await updateManualStatus(supabase, manualId, "processing");
 
     console.log(`Processing PDF for manual ${manualId}`);
-
-    // Fetch PDF
-    const pdfResponse = await fetch(pdfUrl);
-    if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
-    }
-
-    const pdfBuffer = await pdfResponse.arrayBuffer();
-    const pdfSize = pdfBuffer.byteLength;
-    console.log(`PDF size: ${(pdfSize / 1024 / 1024).toFixed(2)} MB`);
-
-    // Convert PDF to base64
-    const base64Pdf = btoa(
-      new Uint8Array(pdfBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
-    );
-
     console.log("Extracting text from PDF using AI...");
 
-    // Use Gemini Pro for better extraction quality
+    // Use Gemini Pro with URL directly to avoid memory issues
     const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -193,10 +177,9 @@ CRITICAL INSTRUCTIONS:
 Output the complete extracted text maintaining the document structure.`
               },
               {
-                type: "file",
-                file: {
-                  filename: "manual.pdf",
-                  file_data: `data:application/pdf;base64,${base64Pdf}`
+                type: "image_url",
+                image_url: {
+                  url: pdfUrl
                 }
               }
             ]
