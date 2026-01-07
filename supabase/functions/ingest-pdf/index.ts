@@ -7,6 +7,45 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function* base64EncodeStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onBytes?: (n: number) => void
+): AsyncGenerator<string> {
+  let carry = new Uint8Array(0);
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!value || value.length === 0) continue;
+
+    onBytes?.(value.length);
+
+    let chunk = value;
+    if (carry.length) {
+      const merged = new Uint8Array(carry.length + chunk.length);
+      merged.set(carry, 0);
+      merged.set(chunk, carry.length);
+      chunk = merged;
+      carry = new Uint8Array(0);
+    }
+
+    const fullLen = chunk.length - (chunk.length % 3);
+    if (fullLen > 0) {
+      yield encodeBase64(chunk.subarray(0, fullLen));
+    }
+
+    const remaining = chunk.length - fullLen;
+    if (remaining > 0) {
+      carry = chunk.subarray(fullLen);
+    }
+  }
+
+  if (carry.length) {
+    // Final chunk (will include correct padding)
+    yield encodeBase64(carry);
+  }
+}
+
 async function generateEmbedding(text: string, apiKey: string, retries = 3): Promise<number[]> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
