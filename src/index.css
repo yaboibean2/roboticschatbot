@@ -2,100 +2,85 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Source+Sans+3:wght@300;400;500;600&display=swap');
-
 @layer base {
   :root {
-    /* Fishbowl-inspired palette: water, depth, clarity */
-    --background: 200 20% 97%;
-    --foreground: 210 35% 12%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
 
-    --card: 200 25% 99%;
-    --card-foreground: 210 35% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
 
-    --popover: 200 25% 99%;
-    --popover-foreground: 210 35% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
 
-    /* Deep ocean blue - depth, wisdom, the fishbowl waters */
-    --primary: 205 75% 30%;
-    --primary-foreground: 200 20% 97%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
 
-    /* Warm parchment - like Dr. D's letters */
-    --secondary: 45 40% 92%;
-    --secondary-foreground: 210 35% 15%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
 
-    --muted: 200 15% 90%;
-    --muted-foreground: 210 20% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
 
-    /* Amber gold - like enlightenment, felt experience */
-    --accent: 38 90% 50%;
-    --accent-foreground: 210 35% 10%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 200 20% 97%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 200 20% 85%;
-    --input: 200 20% 88%;
-    --ring: 205 75% 30%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 9%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Custom tokens - fishbowl metaphors */
-    --gradient-primary: linear-gradient(135deg, hsl(205 75% 30%), hsl(195 65% 40%));
-    --gradient-water: linear-gradient(180deg, hsl(200 30% 95%) 0%, hsl(200 25% 90%) 100%);
-    --gradient-parchment: linear-gradient(145deg, hsl(45 40% 97%), hsl(40 35% 93%));
-    
-    --shadow-soft: 0 4px 20px -4px hsl(210 35% 12% / 0.08);
-    --shadow-elevated: 0 12px 40px -8px hsl(210 35% 12% / 0.12);
-    --shadow-water: 0 0 60px hsl(205 75% 30% / 0.1);
-
-    --sidebar-background: 45 35% 95%;
-    --sidebar-foreground: 210 35% 15%;
-    --sidebar-primary: 205 75% 30%;
-    --sidebar-primary-foreground: 200 20% 97%;
-    --sidebar-accent: 45 40% 90%;
-    --sidebar-accent-foreground: 210 35% 12%;
-    --sidebar-border: 45 30% 85%;
-    --sidebar-ring: 205 75% 30%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 0 0% 9%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 0 0% 9%;
   }
 
   .dark {
-    --background: 210 30% 8%;
-    --foreground: 45 25% 92%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
 
-    --card: 210 30% 11%;
-    --card-foreground: 45 25% 92%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 210 30% 11%;
-    --popover-foreground: 45 25% 92%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 195 60% 50%;
-    --primary-foreground: 210 30% 8%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
 
-    --secondary: 210 25% 18%;
-    --secondary-foreground: 45 25% 90%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 210 25% 18%;
-    --muted-foreground: 45 20% 60%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
 
-    --accent: 38 85% 55%;
-    --accent-foreground: 210 30% 8%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 65% 45%;
-    --destructive-foreground: 45 25% 92%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 210 25% 20%;
-    --input: 210 25% 20%;
-    --ring: 195 60% 50%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 0% 83%;
 
-    --sidebar-background: 210 30% 10%;
-    --sidebar-foreground: 45 25% 90%;
-    --sidebar-primary: 195 60% 50%;
-    --sidebar-primary-foreground: 210 30% 8%;
-    --sidebar-accent: 210 25% 16%;
-    --sidebar-accent-foreground: 45 25% 90%;
-    --sidebar-border: 210 25% 18%;
-    --sidebar-ring: 195 60% 50%;
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 0 0% 9%;
+    --sidebar-accent: 0 0% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 0 0% 83%;
   }
 }
 
@@ -105,108 +90,19 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
 }
 
-@layer utilities {
-  .gradient-primary {
-    background: var(--gradient-primary);
-  }
-
-  .gradient-water {
-    background: var(--gradient-water);
-  }
-
-  .gradient-parchment {
-    background: var(--gradient-parchment);
-  }
-
-  .shadow-soft {
-    box-shadow: var(--shadow-soft);
-  }
-
-  .shadow-elevated {
-    box-shadow: var(--shadow-elevated);
-  }
-
-  .shadow-water {
-    box-shadow: var(--shadow-water);
-  }
-
-  .text-balance {
-    text-wrap: balance;
-  }
-}
-
-@layer components {
-  .chat-bubble-user {
-    @apply bg-primary text-primary-foreground rounded-2xl rounded-br-md px-5 py-3;
-  }
-
-  .chat-bubble-assistant {
-    @apply bg-card text-card-foreground rounded-2xl rounded-bl-md px-5 py-3 shadow-soft border border-border/50;
-  }
-
-  .step-card {
-    @apply bg-card rounded-xl p-5 shadow-soft border border-border/30 transition-all duration-300 hover:shadow-elevated relative overflow-hidden;
-  }
-
-  .step-card::before {
-    content: '';
-    @apply absolute top-0 left-0 w-1 h-full bg-primary opacity-0 transition-opacity duration-300;
-  }
-
-  .step-card:hover::before {
-    @apply opacity-100;
-  }
-
-  .methodology-card {
-    @apply bg-card rounded-xl p-5 shadow-soft border border-border/30 transition-all duration-300 hover:shadow-elevated;
-  }
-
-  .fishbowl-ring {
-    @apply rounded-full border-2 border-primary/20;
-    background: radial-gradient(circle at 30% 30%, hsl(var(--primary) / 0.1), transparent 60%);
-  }
-
-  .streaming-text {
-    @apply will-change-contents;
-  }
-
-  .streaming-text p,
-  .streaming-text li,
-  .streaming-text strong,
-  .streaming-text em {
-    animation: text-fade-in 0.15s ease-out;
-  }
-
-  .quote-block {
-    @apply border-l-4 border-accent pl-4 italic text-muted-foreground;
-  }
-}
-
-@keyframes text-fade-in {
-  from {
-    opacity: 0.7;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* Custom scrollbar */
+/* Minimal scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -215,69 +111,4 @@
 
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/30;
-}
-
-/* Animation keyframes */
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulse-subtle {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
-}
-
-@keyframes typing {
-  0%, 60%, 100% {
-    transform: translateY(0);
-  }
-  30% {
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes ripple {
-  0% {
-    transform: scale(1);
-    opacity: 0.4;
-  }
-  100% {
-    transform: scale(1.5);
-    opacity: 0;
-  }
-}
-
-.animate-fade-in-up {
-  animation: fade-in-up 0.4s ease-out forwards;
-}
-
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s ease-in-out infinite;
-}
-
-.animate-ripple {
-  animation: ripple 3s ease-out infinite;
-}
-
-.typing-dot {
-  animation: typing 1.4s ease-in-out infinite;
-}
-
-.typing-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-dot:nth-child(3) {
-  animation-delay: 0.4s;
 }

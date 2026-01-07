@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           embedding: string | null
           id: string
+          manual_id: string | null
           metadata: Json | null
         }
         Insert: {
@@ -27,6 +28,7 @@ export type Database = {
           created_at?: string
           embedding?: string | null
           id?: string
+          manual_id?: string | null
           metadata?: Json | null
         }
         Update: {
@@ -34,7 +36,43 @@ export type Database = {
           created_at?: string
           embedding?: string | null
           id?: string
+          manual_id?: string | null
           metadata?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_manual_id_fkey"
+            columns: ["manual_id"]
+            isOneToOne: false
+            referencedRelation: "manuals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manuals: {
+        Row: {
+          created_at: string
+          file_path: string
+          file_size: number | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -78,6 +116,20 @@ export type Database = {
     Functions: {
       match_chunks: {
         Args: {
+          match_count?: number
+          match_threshold?: number
+          query_embedding: string
+        }
+        Returns: {
+          content: string
+          id: string
+          metadata: Json
+          similarity: number
+        }[]
+      }
+      match_chunks_by_manual: {
+        Args: {
+          manual_id_filter: string
           match_count?: number
           match_threshold?: number
           query_embedding: string
