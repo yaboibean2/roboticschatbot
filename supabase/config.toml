@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.ingest-pdf]
 verify_jwt = false
 
+[functions.ingest-manual-chunks]
+verify_jwt = false
+
 [functions.process-embeddings]
 verify_jwt = false
 
