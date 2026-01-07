@@ -96,7 +96,7 @@ export default function Admin() {
     setIsProcessing(true);
     setProcessingManualId(manualId);
     setProgress(0);
-    setStatus("Processing PDF...");
+    setStatus("Starting PDF processing...");
 
     try {
       // Get the public URL for the PDF
@@ -104,26 +104,58 @@ export default function Admin() {
         .from("manuals")
         .getPublicUrl(filePath);
 
-      setStatus("Extracting and chunking text...");
-      setProgress(20);
+      setStatus("Extracting text from PDF...");
+      setProgress(10);
 
-      // Call the ingest function
-      const { data, error } = await supabase.functions.invoke("ingest-pdf", {
+      // Phase 1: Extract text and create chunks
+      const { data: ingestData, error: ingestError } = await supabase.functions.invoke("ingest-pdf", {
         body: { 
           manualId, 
           pdfUrl: urlData.publicUrl 
         },
       });
 
-      if (error) throw error;
+      if (ingestError) throw ingestError;
+      if (ingestData?.error) throw new Error(ingestData.error);
+
+      const totalChunks = ingestData?.chunks || 0;
+      setStatus(`Extracted ${totalChunks} chunks. Generating embeddings...`);
+      setProgress(30);
+
+      // Phase 2: Process embeddings in batches
+      let complete = false;
+      let processed = 0;
+
+      while (!complete) {
+        const { data: embedData, error: embedError } = await supabase.functions.invoke("process-embeddings", {
+          body: { manualId },
+        });
+
+        if (embedError) throw embedError;
+        if (embedData?.error) throw new Error(embedData.error);
+
+        complete = embedData?.complete || false;
+        processed = totalChunks - (embedData?.remaining || 0);
+        
+        const progressPct = 30 + Math.round((processed / totalChunks) * 70);
+        setProgress(Math.min(progressPct, 99));
+        setStatus(`Embedding chunks: ${processed}/${totalChunks}`);
+
+        if (!complete) {
+          // Small delay before next batch
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
 
       setProgress(100);
-      setStatus(`Done! Processed ${data?.chunks || 0} chunks.`);
+      setStatus(`Done! Processed ${totalChunks} chunks.`);
       toast.success("Manual processed successfully!");
+      fetchManuals();
     } catch (error) {
       console.error("Processing error:", error);
       setStatus(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
       toast.error("Failed to process manual");
+      fetchManuals();
     } finally {
       setIsProcessing(false);
       setProcessingManualId(null);
