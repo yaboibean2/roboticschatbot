@@ -99,19 +99,14 @@ export default function Admin() {
     setStatus("Starting PDF processing...");
 
     try {
-      // Get the public URL for the PDF
-      const { data: urlData } = supabase.storage
-        .from("manuals")
-        .getPublicUrl(filePath);
-
       setStatus("Extracting text from PDF...");
       setProgress(10);
 
       // Phase 1: Extract text and create chunks
       const { data: ingestData, error: ingestError } = await supabase.functions.invoke("ingest-pdf", {
-        body: { 
-          manualId, 
-          pdfUrl: urlData.publicUrl 
+        body: {
+          manualId,
+          filePath,
         },
       });
 

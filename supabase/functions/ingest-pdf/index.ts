@@ -1,10 +1,69 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+type AnyBytes = Uint8Array<ArrayBufferLike>;
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  return ab;
+}
+
+async function* base64EncodeStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onBytes?: (n: number) => void
+): AsyncGenerator<string> {
+  // Base64 needs input length multiple of 3. Keep remainder bytes between reads.
+  let carry: AnyBytes = new Uint8Array(0);
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!value || value.length === 0) continue;
+
+    onBytes?.(value.length);
+
+    let chunk: AnyBytes = value as AnyBytes;
+    if (carry.length) {
+      const merged: AnyBytes = new Uint8Array(carry.length + chunk.length);
+      merged.set(carry, 0);
+      merged.set(chunk, carry.length);
+      chunk = merged;
+      carry = new Uint8Array(0);
+    }
+
+    const fullLen = chunk.length - (chunk.length % 3);
+    if (fullLen > 0) {
+      yield encodeBase64(toArrayBuffer(chunk.subarray(0, fullLen)));
+    }
+
+    const remaining = chunk.length - fullLen;
+    if (remaining > 0) {
+      carry = chunk.subarray(fullLen) as AnyBytes;
+    }
+  }
+
+  if (carry.length) {
+    yield encodeBase64(toArrayBuffer(carry));
+  }
+}
+
+async function readResponseBodyAsBase64(resp: Response): Promise<{ base64: string; bytes: number }> {
+  if (!resp.body) throw new Error("PDF response has no body");
+  const reader = resp.body.getReader();
+  let base64 = "";
+  let bytes = 0;
+  for await (const part of base64EncodeStream(reader, (n) => (bytes += n))) {
+    base64 += part;
+  }
+  return { base64, bytes };
+}
 
 function chunkText(text: string, chunkSize = 1500, overlap = 200): string[] {
   const chunks: string[] = [];
@@ -73,10 +132,11 @@ serve(async (req) => {
   try {
     const body = await req.json();
     manualId = body.manualId;
-    const pdfUrl = body.pdfUrl;
+    const filePath = body.filePath as string | undefined;
+    const pdfUrl = body.pdfUrl as string | undefined;
 
-    if (!manualId || !pdfUrl) {
-      throw new Error("manualId and pdfUrl are required");
+    if (!manualId || (!filePath && !pdfUrl)) {
+      throw new Error("manualId and (filePath or pdfUrl) are required");
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -92,9 +152,37 @@ serve(async (req) => {
     await updateManualStatus(supabase, manualId, "extracting");
 
     console.log(`Starting PDF extraction for manual ${manualId}`);
-    console.log(`PDF URL: ${pdfUrl}`);
+    if (filePath) console.log(`File path: ${filePath}`);
+    if (pdfUrl) console.log(`PDF URL: ${pdfUrl}`);
 
-    // Use Gemini with URL-based file input (no base64 loading into memory)
+    // Download PDF and encode as base64 (AI gateway requires file_data for PDFs)
+    let pdfStream: ReadableStream<Uint8Array>;
+
+    if (filePath) {
+      const { data: blob, error: downloadError } = await supabase.storage
+        .from("manuals")
+        .download(filePath);
+      if (downloadError || !blob) {
+        throw new Error(`Failed to download PDF from storage: ${downloadError?.message || "unknown error"}`);
+      }
+      pdfStream = blob.stream();
+    } else {
+      const safeUrl = pdfUrl!.replace(/\(/g, "%28").replace(/\)/g, "%29");
+      const pdfResponse = await fetch(safeUrl);
+      if (!pdfResponse.ok) {
+        throw new Error(`Failed to download PDF: ${pdfResponse.status}`);
+      }
+      if (!pdfResponse.body) throw new Error("PDF response has no body");
+      pdfStream = pdfResponse.body;
+    }
+
+    const reader = pdfStream.getReader();
+    let base64Pdf = "";
+    let pdfBytes = 0;
+    for await (const part of base64EncodeStream(reader, (n) => (pdfBytes += n))) {
+      base64Pdf += part;
+    }
+
     const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -125,7 +213,8 @@ Output the complete extracted text maintaining the document structure.`,
               {
                 type: "file",
                 file: {
-                  url: pdfUrl,
+                  filename: "manual.pdf",
+                  file_data: `data:application/pdf;base64,${base64Pdf}`,
                 },
               },
             ],
