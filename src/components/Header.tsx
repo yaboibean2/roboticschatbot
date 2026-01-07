@@ -1,24 +1,22 @@
-import { Waves, Menu, RotateCcw } from "lucide-react";
+import { RotateCcw, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { ManualSelector } from "./ManualSelector";
 
 interface HeaderProps {
-  onMenuClick: () => void;
   onNewChat: () => void;
   hasMessages: boolean;
+  selectedManualId: string | null;
+  onSelectManual: (id: string | null) => void;
 }
 
-export function Header({ onMenuClick, onNewChat, hasMessages }: HeaderProps) {
+export function Header({ onNewChat, hasMessages, selectedManualId, onSelectManual }: HeaderProps) {
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/80 backdrop-blur-sm">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center shadow-water">
-          <Waves className="w-5 h-5 text-primary-foreground" />
-        </div>
-        <div>
-          <h1 className="font-serif text-xl font-semibold text-foreground">The Fishbowl</h1>
-          <p className="text-xs text-muted-foreground">Dr. D</p>
-        </div>
-      </div>
+    <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-background">
+      <ManualSelector 
+        selectedManualId={selectedManualId} 
+        onSelectManual={onSelectManual} 
+      />
       
       <div className="flex items-center gap-2">
         {hasMessages && (
@@ -28,18 +26,18 @@ export function Header({ onMenuClick, onNewChat, hasMessages }: HeaderProps) {
             onClick={onNewChat}
             className="text-muted-foreground hover:text-foreground"
           >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            New Dialogue
+            <RotateCcw className="w-4 h-4" />
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onMenuClick}
-          className="lg:hidden"
-        >
-          <Menu className="w-5 h-5" />
-        </Button>
+        <Link to="/admin">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
+        </Link>
       </div>
     </header>
   );

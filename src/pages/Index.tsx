@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Header } from "@/components/Header";
-import { Sidebar } from "@/components/Sidebar";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { useChat } from "@/hooks/useChat";
 import { ChevronDown } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { messages, isLoading, sendMessage, clearMessages } = useChat();
+  const [selectedManualId, setSelectedManualId] = useState<string | null>(null);
+  const [manualName, setManualName] = useState<string>("");
+  const { messages, isLoading, sendMessage, clearMessages } = useChat(selectedManualId);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -17,6 +18,32 @@ const Index = () => {
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const [showJumpButton, setShowJumpButton] = useState(false);
   const lastScrollTopRef = useRef(0);
+
+  // Fetch manual name when selected
+  useEffect(() => {
+    const fetchManualName = async () => {
+      if (!selectedManualId) {
+        setManualName("");
+        return;
+      }
+      const { data } = await supabase
+        .from("manuals")
+        .select("name")
+        .eq("id", selectedManualId)
+        .single();
+      
+      if (data) {
+        setManualName(data.name);
+      }
+    };
+    fetchManualName();
+  }, [selectedManualId]);
+
+  // Clear messages when manual changes
+  const handleManualChange = useCallback((id: string | null) => {
+    setSelectedManualId(id);
+    clearMessages();
+  }, [clearMessages]);
 
   // Check if scrolled to bottom
   const isAtBottom = useCallback(() => {
@@ -26,7 +53,7 @@ const Index = () => {
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
   }, []);
 
-  // Handle user scroll - detect direction immediately
+  // Handle user scroll
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -35,21 +62,19 @@ const Index = () => {
     const scrolledUp = currentScrollTop < lastScrollTopRef.current;
     lastScrollTopRef.current = currentScrollTop;
 
-    // If user scrolls UP at all during streaming, immediately disable auto-scroll
     if (scrolledUp && isLoading) {
       setAutoScrollEnabled(false);
       setShowJumpButton(true);
       return;
     }
     
-    // If user scrolls to bottom, re-enable auto-scroll
     if (isAtBottom()) {
       setAutoScrollEnabled(true);
       setShowJumpButton(false);
     }
   }, [isAtBottom, isLoading]);
 
-  // Auto-scroll to bottom when messages change (if enabled)
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (autoScrollEnabled && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "auto" });
@@ -82,64 +107,65 @@ const Index = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <Header
-          onMenuClick={() => setSidebarOpen(true)}
-          onNewChat={clearMessages}
-          hasMessages={messages.length > 0}
-        />
+    <div className="flex flex-col h-screen bg-background">
+      <Header
+        onNewChat={clearMessages}
+        hasMessages={messages.length > 0}
+        selectedManualId={selectedManualId}
+        onSelectManual={handleManualChange}
+      />
 
-        <main className="flex-1 overflow-hidden flex flex-col relative">
-          {messages.length === 0 ? (
-            <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
-          ) : (
-            <div
-              ref={scrollContainerRef}
-              onScroll={handleScroll}
-              className="flex-1 overflow-y-auto px-4 md:px-8 py-6"
-            >
-              <div className="max-w-3xl mx-auto space-y-6">
-                {messages.map((message, index) => (
-                  <ChatMessage
-                    key={index}
-                    role={message.role}
-                    content={message.content}
-                    isStreaming={
-                      isLoading &&
-                      index === messages.length - 1 &&
-                      message.role === "assistant"
-                    }
-                    onFollowUpClick={handleSuggestionClick}
-                  />
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
-          )}
-
-          {/* Jump to bottom button */}
-          {showJumpButton && (
-            <button
-              onClick={jumpToBottom}
-              className="absolute bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center gap-2 hover:bg-primary/90 transition-all animate-fade-in"
-            >
-              <ChevronDown className="w-4 h-4" />
-              <span className="text-sm font-medium">Jump to latest</span>
-            </button>
-          )}
-
-          <div className="px-4 md:px-8 pb-6 pt-2">
-            <div className="max-w-3xl mx-auto">
-              <ChatInput onSend={sendMessage} disabled={isLoading} />
+      <main className="flex-1 overflow-hidden flex flex-col relative">
+        {messages.length === 0 ? (
+          <WelcomeScreen 
+            onSuggestionClick={handleSuggestionClick} 
+            manualName={manualName}
+          />
+        ) : (
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto px-4 py-6"
+          >
+            <div className="max-w-2xl mx-auto space-y-4">
+              {messages.map((message, index) => (
+                <ChatMessage
+                  key={index}
+                  role={message.role}
+                  content={message.content}
+                  isStreaming={
+                    isLoading &&
+                    index === messages.length - 1 &&
+                    message.role === "assistant"
+                  }
+                  onFollowUpClick={handleSuggestionClick}
+                />
+              ))}
+              <div ref={messagesEndRef} />
             </div>
           </div>
-        </main>
-      </div>
+        )}
 
-      {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        {/* Jump to bottom button */}
+        {showJumpButton && (
+          <button
+            onClick={jumpToBottom}
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-all"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        )}
+
+        <div className="px-4 pb-4 pt-2">
+          <div className="max-w-2xl mx-auto">
+            <ChatInput 
+              onSend={sendMessage} 
+              disabled={isLoading || !selectedManualId} 
+              placeholder={selectedManualId ? "Ask about the game manual..." : "Select a manual first"}
+            />
+          </div>
+        </div>
+      </main>
     </div>
   );
 };

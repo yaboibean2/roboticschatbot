@@ -8,82 +8,27 @@ type Message = {
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-// Smooth streaming config
-const CHAR_DELAY_MS = 1; // Very fast character reveal
-const BUFFER_THRESHOLD = 15; // Small buffer before starting
-
-export function useChat() {
+export function useChat(manualId: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Keep a synchronous view of messages for sending (avoids relying on setState timing)
   const messagesRef = useRef<Message[]>([]);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  const displayedContentRef = useRef("");
-  const pendingContentRef = useRef("");
-  const animationTimeoutRef = useRef<number | null>(null);
-  const isAnimatingRef = useRef(false);
-
-  const updateDisplay = useCallback(() => {
-    setMessages((prev) => {
-      const lastMsg = prev[prev.length - 1];
-      if (lastMsg?.role === "assistant") {
-        return prev.map((m, i) =>
-          i === prev.length - 1 ? { ...m, content: displayedContentRef.current } : m
-        );
-      }
-      return [...prev, { role: "assistant", content: displayedContentRef.current }];
-    });
-  }, []);
-
-  const animateNextChar = useCallback(() => {
-    if (displayedContentRef.current.length < pendingContentRef.current.length) {
-      displayedContentRef.current = pendingContentRef.current.slice(
-        0,
-        displayedContentRef.current.length + 1
-      );
-      updateDisplay();
-      animationTimeoutRef.current = window.setTimeout(animateNextChar, CHAR_DELAY_MS);
-    } else {
-      isAnimatingRef.current = false;
-      animationTimeoutRef.current = null;
-    }
-  }, [updateDisplay]);
-
-  const startAnimation = useCallback(() => {
-    if (
-      !isAnimatingRef.current &&
-      pendingContentRef.current.length > displayedContentRef.current.length
-    ) {
-      isAnimatingRef.current = true;
-      animateNextChar();
-    }
-  }, [animateNextChar]);
-
   const sendMessage = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed || isLoading || !manualId) return;
 
       const userMessage: Message = { role: "user", content: trimmed };
       const currentMessages: Message[] = [...messagesRef.current, userMessage];
 
-      // Optimistically add the user message to UI
       setMessages(currentMessages);
       messagesRef.current = currentMessages;
 
       setIsLoading(true);
-      displayedContentRef.current = "";
-      pendingContentRef.current = "";
-      isAnimatingRef.current = false;
-
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-        animationTimeoutRef.current = null;
-      }
 
       try {
         const response = await fetch(CHAT_URL, {
@@ -94,6 +39,7 @@ export function useChat() {
           },
           body: JSON.stringify({
             messages: currentMessages,
+            manualId,
           }),
         });
 
@@ -109,7 +55,7 @@ export function useChat() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let textBuffer = "";
-        let hasStartedAnimation = false;
+        let assistantContent = "";
 
         while (true) {
           const { done, value } = await reader.read();
@@ -133,15 +79,16 @@ export function useChat() {
               const parsed = JSON.parse(jsonStr);
               const delta = parsed.choices?.[0]?.delta?.content;
               if (delta) {
-                pendingContentRef.current += delta;
-
-                // Start animation after buffering enough content
-                if (!hasStartedAnimation && pendingContentRef.current.length >= BUFFER_THRESHOLD) {
-                  hasStartedAnimation = true;
-                  startAnimation();
-                } else if (hasStartedAnimation) {
-                  startAnimation();
-                }
+                assistantContent += delta;
+                setMessages((prev) => {
+                  const last = prev[prev.length - 1];
+                  if (last?.role === "assistant") {
+                    return prev.map((m, i) =>
+                      i === prev.length - 1 ? { ...m, content: assistantContent } : m
+                    );
+                  }
+                  return [...prev, { role: "assistant", content: assistantContent }];
+                });
               }
             } catch {
               textBuffer = line + "\n" + textBuffer;
@@ -163,7 +110,7 @@ export function useChat() {
               const parsed = JSON.parse(jsonStr);
               const delta = parsed.choices?.[0]?.delta?.content;
               if (delta) {
-                pendingContentRef.current += delta;
+                assistantContent += delta;
               }
             } catch {
               /* ignore */
@@ -171,37 +118,23 @@ export function useChat() {
           }
         }
 
-        // Ensure animation starts if we have content but didn't hit threshold
-        if (pendingContentRef.current.length > 0 && !hasStartedAnimation) {
-          startAnimation();
-        }
-
-        // Wait for animation to complete
-        const waitForAnimation = () => {
-          return new Promise<void>((resolve) => {
-            const check = () => {
-              if (displayedContentRef.current.length >= pendingContentRef.current.length) {
-                resolve();
-              } else {
-                setTimeout(check, 50);
-              }
-            };
-            check();
+        // Final update
+        if (assistantContent) {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant") {
+              return prev.map((m, i) =>
+                i === prev.length - 1 ? { ...m, content: assistantContent } : m
+              );
+            }
+            return [...prev, { role: "assistant", content: assistantContent }];
           });
-        };
-
-        await waitForAnimation();
+        }
       } catch (error) {
         console.error("Chat error:", error);
         const errorMessage = error instanceof Error ? error.message : "Something went wrong";
         toast.error(errorMessage);
 
-        if (animationTimeoutRef.current) {
-          clearTimeout(animationTimeoutRef.current);
-          animationTimeoutRef.current = null;
-        }
-
-        // Keep the user's message; only remove a (possibly empty) assistant placeholder.
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           return last?.role === "assistant" ? prev.slice(0, -1) : prev;
@@ -210,19 +143,12 @@ export function useChat() {
         setIsLoading(false);
       }
     },
-    [isLoading, startAnimation]
+    [isLoading, manualId]
   );
 
   const clearMessages = useCallback(() => {
     setMessages([]);
     messagesRef.current = [];
-    displayedContentRef.current = "";
-    pendingContentRef.current = "";
-    if (animationTimeoutRef.current) {
-      clearTimeout(animationTimeoutRef.current);
-      animationTimeoutRef.current = null;
-    }
-    isAnimatingRef.current = false;
   }, []);
 
   return {
