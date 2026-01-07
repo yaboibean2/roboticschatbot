@@ -6,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 import { Upload, Trash2, FileText, ArrowLeft, RefreshCw, CheckCircle, AlertCircle, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import { extractPdfText } from "@/lib/extractPdfText";
+import { chunkText } from "@/lib/chunkText";
 
 interface Manual {
   id: string;
@@ -80,7 +82,7 @@ export default function Admin() {
 
       // Auto-process the uploaded manual
       if (manualData) {
-        await processManual(manualData.id, fileName);
+        await processManual(manualData.id, fileName, file);
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -92,53 +94,117 @@ export default function Admin() {
     }
   };
 
-  const processManual = async (manualId: string, filePath: string) => {
+  const processManual = async (manualId: string, filePath: string, file?: File) => {
     setIsProcessing(true);
     setProcessingManualId(manualId);
     setProgress(0);
     setStatus("Starting PDF processing...");
 
     try {
-      setStatus("Extracting text from PDF...");
+      // 1) Get the PDF bytes locally (either the just-uploaded file or download from storage)
+      setStatus("Preparing PDF...");
+      setProgress(5);
+
+      let pdfBlob: Blob;
+      if (file) {
+        pdfBlob = file;
+      } else {
+        const { data: downloaded, error: dlError } = await supabase.storage
+          .from("manuals")
+          .download(filePath);
+        if (dlError || !downloaded) throw dlError || new Error("Failed to download PDF");
+        pdfBlob = downloaded;
+      }
+
+      // 2) Extract text in the browser (avoids backend WORKER_LIMIT)
+      setStatus("Extracting text (in your browser)...");
       setProgress(10);
 
-      // Phase 1: Extract text and create chunks
-      const { data: ingestData, error: ingestError } = await supabase.functions.invoke("ingest-pdf", {
-        body: {
-          manualId,
-          filePath,
+      const extractedText = await extractPdfText(pdfBlob, {
+        onProgress: ({ page, totalPages }) => {
+          const pct = 10 + Math.round((page / totalPages) * 20); // 10-30
+          setProgress(pct);
+          setStatus(`Extracting text: page ${page}/${totalPages}`);
         },
       });
 
-      if (ingestError) throw ingestError;
-      if (ingestData?.error) throw new Error(ingestData.error);
+      if (!extractedText || extractedText.trim().length < 50) {
+        throw new Error("No text extracted from PDF (is it scanned?)");
+      }
 
-      const totalChunks = ingestData?.chunks || 0;
-      setStatus(`Extracted ${totalChunks} chunks. Generating embeddings...`);
-      setProgress(30);
+      // 3) Chunk locally
+      setStatus("Chunking text...");
+      setProgress(35);
 
-      // Phase 2: Process embeddings in batches
+      const chunks = chunkText(extractedText, 1500, 250);
+      const totalChunks = chunks.length;
+      if (totalChunks === 0) throw new Error("No chunks produced");
+
+      // 4) Upload chunks to backend in small batches (no embeddings yet)
+      setStatus(`Uploading ${totalChunks} chunks...`);
+      setProgress(40);
+
+      const uploadBatchSize = 25;
+      for (let i = 0; i < chunks.length; i += uploadBatchSize) {
+        const slice = chunks.slice(i, i + uploadBatchSize);
+        const batch = slice.map((content, idx) => ({
+          content,
+          metadata: {
+            chunk_index: i + idx,
+            total_chunks: totalChunks,
+            char_count: content.length,
+          },
+        }));
+
+        const { data: upData, error: upError } = await supabase.functions.invoke(
+          "ingest-manual-chunks",
+          {
+            body: {
+              manualId,
+              chunks: batch,
+              clearFirst: i === 0,
+              finalize: i + uploadBatchSize >= chunks.length,
+              totalChunks,
+            },
+          }
+        );
+
+        if (upError) throw upError;
+        if (upData?.error) throw new Error(upData.error);
+
+        const uploaded = Math.min(i + uploadBatchSize, totalChunks);
+        const pct = 40 + Math.round((uploaded / totalChunks) * 20); // 40-60
+        setProgress(pct);
+        setStatus(`Uploading chunks: ${uploaded}/${totalChunks}`);
+      }
+
+      // 5) Generate embeddings in small batches (backend)
+      setStatus("Generating embeddings...");
+      setProgress(60);
+
       let complete = false;
       let processed = 0;
 
       while (!complete) {
-        const { data: embedData, error: embedError } = await supabase.functions.invoke("process-embeddings", {
-          body: { manualId },
-        });
+        const { data: embedData, error: embedError } = await supabase.functions.invoke(
+          "process-embeddings",
+          {
+            body: { manualId },
+          }
+        );
 
         if (embedError) throw embedError;
         if (embedData?.error) throw new Error(embedData.error);
 
         complete = embedData?.complete || false;
         processed = totalChunks - (embedData?.remaining || 0);
-        
-        const progressPct = 30 + Math.round((processed / totalChunks) * 70);
-        setProgress(Math.min(progressPct, 99));
+
+        const pct = 60 + Math.round((processed / totalChunks) * 40);
+        setProgress(Math.min(pct, 99));
         setStatus(`Embedding chunks: ${processed}/${totalChunks}`);
 
         if (!complete) {
-          // Small delay before next batch
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 500));
         }
       }
 
@@ -197,10 +263,13 @@ export default function Admin() {
           </Badge>
         );
       case "processing":
+      case "extracting":
+      case "chunking":
+      case "embedding":
         return (
           <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
             <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-            Processing
+            {status}
           </Badge>
         );
       case "error":
