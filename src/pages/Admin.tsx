@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Upload, Trash2, FileText, ArrowLeft, RefreshCw, CheckCircle, AlertCircle, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { extractPdfText } from "@/lib/extractPdfText";
+import { extractPdfWithImages } from "@/lib/extractPdfText";
 import { chunkText } from "@/lib/chunkText";
 
 interface Manual {
@@ -116,23 +116,43 @@ export default function Admin() {
         pdfBlob = downloaded;
       }
 
-      // 2) Extract text in the browser (avoids backend WORKER_LIMIT)
-      setStatus("Extracting text (in your browser)...");
+      // 2) Extract text AND page images in the browser
+      setStatus("Extracting text & images (in your browser)...");
       setProgress(10);
 
-      const extractedText = await extractPdfText(pdfBlob, {
+      const { text: extractedText, pageImages } = await extractPdfWithImages(pdfBlob, {
         onProgress: ({ page, totalPages }) => {
-          const pct = 10 + Math.round((page / totalPages) * 20); // 10-30
+          const pct = 10 + Math.round((page / totalPages) * 15); // 10-25
           setProgress(pct);
-          setStatus(`Extracting text: page ${page}/${totalPages}`);
+          setStatus(`Extracting: page ${page}/${totalPages}`);
         },
+        captureImages: true,
+        imageScale: 1.2,
       });
 
       if (!extractedText || extractedText.trim().length < 50) {
         throw new Error("No text extracted from PDF (is it scanned?)");
       }
 
-      // 3) Chunk locally
+      // 3) Upload page images to storage
+      setStatus("Uploading page images...");
+      setProgress(28);
+
+      const totalPages = pageImages.length;
+      for (let i = 0; i < pageImages.length; i++) {
+        const { pageNumber, blob } = pageImages[i];
+        const imagePath = `${manualId}/pages/page_${pageNumber}.jpg`;
+        
+        await supabase.storage.from("manuals").upload(imagePath, blob, {
+          contentType: "image/jpeg",
+          upsert: true,
+        });
+        
+        const pct = 28 + Math.round(((i + 1) / totalPages) * 7); // 28-35
+        setProgress(pct);
+      }
+
+      // 4) Chunk locally
       setStatus("Chunking text...");
       setProgress(35);
 
@@ -140,7 +160,7 @@ export default function Admin() {
       const totalChunks = chunks.length;
       if (totalChunks === 0) throw new Error("No chunks produced");
 
-      // 4) Upload chunks to backend in small batches (no embeddings yet)
+      // 5) Upload chunks to backend in small batches (no embeddings yet)
       setStatus(`Uploading ${totalChunks} chunks...`);
       setProgress(40);
 

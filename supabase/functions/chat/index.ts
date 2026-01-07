@@ -15,6 +15,7 @@ CRITICAL INSTRUCTIONS:
 - Format quotes like: "exact text from manual" (Section X.Y, Page Z)
 - ALWAYS cite specific rule numbers (G1, G2, SG1, etc.), section names, and page numbers
 - If you see "--- Page X ---" markers in the content, use those page numbers in citations
+- When you reference a specific page, include it like: [See Page X] so images can be shown
 - If the answer is not in the provided context, say "I don't have that information in the current manual"
 - Be thorough - include all relevant details from the manual
 - Use bullet points for lists of rules or requirements
@@ -48,12 +49,17 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
   return data.data[0].embedding;
 }
 
+interface RetrievalResult {
+  context: string;
+  pageNumbers: number[];
+}
+
 async function retrieveRelevantChunks(
   supabase: any,
   query: string,
   manualId: string,
   openaiKey: string
-): Promise<string> {
+): Promise<RetrievalResult> {
   try {
     const queryEmbedding = await generateEmbedding(query, openaiKey);
 
@@ -66,24 +72,36 @@ async function retrieveRelevantChunks(
 
     if (error) {
       console.error("Error retrieving chunks:", error);
-      return "";
+      return { context: "", pageNumbers: [] };
     }
 
     if (!chunks || chunks.length === 0) {
       console.log("No relevant chunks found");
-      return "";
+      return { context: "", pageNumbers: [] };
     }
 
     console.log(`Retrieved ${chunks.length} chunks`);
+
+    // Extract page numbers from chunk content
+    const pageNumbers = new Set<number>();
+    for (const chunk of chunks) {
+      const matches = chunk.content.matchAll(/---\s*Page\s+(\d+)\s*---/gi);
+      for (const match of matches) {
+        pageNumbers.add(parseInt(match[1], 10));
+      }
+    }
 
     const formattedChunks = chunks
       .map((c: any, idx: number) => `[Section ${idx + 1}]\n${c.content}`)
       .join("\n\n---\n\n");
 
-    return `\n\nRELEVANT MANUAL CONTENT:\n\n${formattedChunks}`;
+    return {
+      context: `\n\nRELEVANT MANUAL CONTENT:\n\n${formattedChunks}`,
+      pageNumbers: Array.from(pageNumbers).sort((a, b) => a - b).slice(0, 5), // Max 5 pages
+    };
   } catch (err) {
     console.error("Semantic search error:", err);
-    return "";
+    return { context: "", pageNumbers: [] };
   }
 }
 
@@ -126,16 +144,21 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const knowledgeBase = await retrieveRelevantChunks(
+    const { context: knowledgeBase, pageNumbers } = await retrieveRelevantChunks(
       supabase,
       latestUserMessage,
       manualId,
       OPENAI_API_KEY
     );
 
+    // Build page image URLs
+    const pageImageUrls = pageNumbers.map(
+      (pageNum) => `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`
+    );
+
     const systemPrompt = SYSTEM_PROMPT + knowledgeBase;
 
-    console.log("Sending request with", messages.length, "messages");
+    console.log("Sending request with", messages.length, "messages,", pageNumbers.length, "page images");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -174,7 +197,38 @@ serve(async (req) => {
       );
     }
 
-    return new Response(response.body, {
+    // We need to inject page images into the response
+    // Create a TransformStream to append image data after stream completes
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const reader = response.body!.getReader();
+
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await writer.write(value);
+        }
+
+        // After the AI stream completes, send page images as a custom event
+        if (pageImageUrls.length > 0) {
+          const imageEvent = `data: ${JSON.stringify({
+            type: "page_images",
+            images: pageImageUrls,
+            pageNumbers: pageNumbers,
+          })}\n\n`;
+          await writer.write(new TextEncoder().encode(imageEvent));
+        }
+
+        await writer.close();
+      } catch (err) {
+        console.error("Stream error:", err);
+        await writer.abort(err);
+      }
+    })();
+
+    return new Response(readable, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {

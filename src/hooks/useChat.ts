@@ -4,6 +4,7 @@ import { toast } from "sonner";
 type Message = {
   role: "user" | "assistant";
   content: string;
+  pageImages?: string[];
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
@@ -56,6 +57,7 @@ export function useChat(manualId: string | null) {
         const decoder = new TextDecoder();
         let textBuffer = "";
         let assistantContent = "";
+        let pageImages: string[] = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -73,10 +75,27 @@ export function useChat(manualId: string | null) {
             if (!line.startsWith("data: ")) continue;
 
             const jsonStr = line.slice(6).trim();
-            if (jsonStr === "[DONE]") break;
+            if (jsonStr === "[DONE]") continue;
 
             try {
               const parsed = JSON.parse(jsonStr);
+              
+              // Check for page_images event
+              if (parsed.type === "page_images" && Array.isArray(parsed.images)) {
+                pageImages = parsed.images;
+                // Update the assistant message with images
+                setMessages((prev) => {
+                  const last = prev[prev.length - 1];
+                  if (last?.role === "assistant") {
+                    return prev.map((m, i) =>
+                      i === prev.length - 1 ? { ...m, pageImages } : m
+                    );
+                  }
+                  return prev;
+                });
+                continue;
+              }
+              
               const delta = parsed.choices?.[0]?.delta?.content;
               if (delta) {
                 assistantContent += delta;
@@ -108,6 +127,13 @@ export function useChat(manualId: string | null) {
             if (jsonStr === "[DONE]") continue;
             try {
               const parsed = JSON.parse(jsonStr);
+              
+              // Check for page_images event
+              if (parsed.type === "page_images" && Array.isArray(parsed.images)) {
+                pageImages = parsed.images;
+                continue;
+              }
+              
               const delta = parsed.choices?.[0]?.delta?.content;
               if (delta) {
                 assistantContent += delta;
@@ -124,10 +150,10 @@ export function useChat(manualId: string | null) {
             const last = prev[prev.length - 1];
             if (last?.role === "assistant") {
               return prev.map((m, i) =>
-                i === prev.length - 1 ? { ...m, content: assistantContent } : m
+                i === prev.length - 1 ? { ...m, content: assistantContent, pageImages } : m
               );
             }
-            return [...prev, { role: "assistant", content: assistantContent }];
+            return [...prev, { role: "assistant", content: assistantContent, pageImages }];
           });
         }
       } catch (error) {
