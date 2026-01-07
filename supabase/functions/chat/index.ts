@@ -1,6 +1,5 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +44,7 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
 }
 
 async function retrieveRelevantChunks(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   query: string,
   manualId: string,
   openaiKey: string
@@ -58,7 +57,7 @@ async function retrieveRelevantChunks(
       manual_id_filter: manualId,
       match_count: 10,
       match_threshold: 0.2,
-    });
+    }) as { data: any[] | null; error: any };
 
     if (error) {
       console.error("Error retrieving chunks:", error);
@@ -73,7 +72,7 @@ async function retrieveRelevantChunks(
     console.log(`Retrieved ${chunks.length} chunks`);
 
     const formattedChunks = chunks
-      .map((c: { content: string }, idx: number) => `[Section ${idx + 1}]\n${c.content}`)
+      .map((c: any, idx: number) => `[Section ${idx + 1}]\n${c.content}`)
       .join("\n\n---\n\n");
 
     return `\n\nRELEVANT MANUAL CONTENT:\n\n${formattedChunks}`;
