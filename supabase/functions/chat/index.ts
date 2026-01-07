@@ -8,11 +8,14 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `You are a helpful assistant that answers questions about robotics competition game manuals.
 
-INSTRUCTIONS:
+CRITICAL INSTRUCTIONS:
 - Answer questions ONLY based on the provided knowledge base content
-- Be accurate and cite specific rules, sections, or page numbers when available
+- ALWAYS cite specific rule numbers, section names, page numbers, or headers when they appear in the content
+- Quote directly from the manual when relevant - use exact wording in quotation marks
+- Format citations like: (Section X.Y, Page Z) or (Rule G1) when such identifiers are present
+- If you see numbered rules (like G1, G2, SG1, etc.), reference them explicitly
 - If the answer is not in the provided context, say "I don't have that information in the current manual"
-- Keep answers clear and concise
+- Be thorough - include all relevant details from the manual
 - Use bullet points for lists of rules or requirements
 - After your answer, include 3 follow-up questions in this format:
   [followups]
@@ -55,8 +58,8 @@ async function retrieveRelevantChunks(
     const { data: chunks, error } = await supabase.rpc("match_chunks_by_manual", {
       query_embedding: queryEmbedding,
       manual_id_filter: manualId,
-      match_count: 10,
-      match_threshold: 0.2,
+      match_count: 20,
+      match_threshold: 0.15,
     }) as { data: any[] | null; error: any };
 
     if (error) {
