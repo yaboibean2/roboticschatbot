@@ -25,6 +25,10 @@ export function WelcomeScreen({ onSuggestionClick, manualName }: WelcomeScreenPr
         Game Manual Q&A
       </h1>
       
+      <p className="text-primary font-medium text-sm mb-2 text-center">
+        FRC Team 4990 • Basement Bots
+      </p>
+      
       <p className="text-muted-foreground text-sm mb-8 text-center max-w-md">
         {manualName 
           ? `Ask questions about "${manualName}"`
