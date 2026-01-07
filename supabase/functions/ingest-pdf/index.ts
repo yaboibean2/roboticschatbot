@@ -6,56 +6,108 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-async function generateEmbedding(text: string, apiKey: string): Promise<number[]> {
-  const response = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "text-embedding-3-small",
-      input: text.slice(0, 8000),
-    }),
-  });
+async function generateEmbedding(text: string, apiKey: string, retries = 3): Promise<number[]> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "text-embedding-3-small",
+          input: text.slice(0, 8000),
+        }),
+      });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${error}`);
+      if (response.status === 429) {
+        // Rate limited - wait and retry
+        const waitTime = Math.pow(2, attempt) * 1000;
+        console.log(`Rate limited, waiting ${waitTime}ms before retry ${attempt}/${retries}`);
+        await new Promise(r => setTimeout(r, waitTime));
+        continue;
+      }
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`OpenAI API error: ${error}`);
+      }
+
+      const data = await response.json();
+      return data.data[0].embedding;
+    } catch (err) {
+      if (attempt === retries) throw err;
+      console.log(`Embedding attempt ${attempt} failed, retrying...`);
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
   }
-
-  const data = await response.json();
-  return data.data[0].embedding;
+  throw new Error("Failed to generate embedding after retries");
 }
 
-function chunkText(text: string, chunkSize = 1000, overlap = 100): string[] {
+function chunkText(text: string, chunkSize = 1500, overlap = 200): string[] {
   const chunks: string[] = [];
-  let start = 0;
+  const lines = text.split("\n");
+  let currentChunk = "";
+  let lastOverlap = "";
 
-  while (start < text.length) {
-    const end = Math.min(start + chunkSize, text.length);
-    let chunk = text.slice(start, end);
+  // Section/page markers to preserve
+  const sectionMarkers = /^(#{1,6}\s|Section\s|Page\s|\d+\.\d+|\*\*|Rule\s|[A-Z]{1,3}\d+)/i;
 
-    // Try to break at sentence or paragraph
-    if (end < text.length) {
-      const lastPeriod = chunk.lastIndexOf(". ");
-      const lastNewline = chunk.lastIndexOf("\n");
-      const breakPoint = Math.max(lastPeriod, lastNewline);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const potentialChunk = currentChunk + (currentChunk ? "\n" : "") + line;
 
-      if (breakPoint > chunkSize * 0.5) {
-        chunk = text.slice(start, start + breakPoint + 1);
+    if (potentialChunk.length > chunkSize && currentChunk.length > 100) {
+      // Save current chunk
+      chunks.push(currentChunk.trim());
+
+      // Start new chunk with overlap
+      // Look for a good break point in the last part of the chunk
+      const overlapStart = Math.max(0, currentChunk.length - overlap);
+      lastOverlap = currentChunk.slice(overlapStart);
+
+      // If the current line is a section marker, start fresh
+      if (sectionMarkers.test(line)) {
+        currentChunk = line;
+      } else {
+        // Find a sentence or paragraph break in the overlap
+        const lastPeriod = lastOverlap.lastIndexOf(". ");
+        const lastNewline = lastOverlap.lastIndexOf("\n");
+        const breakPoint = Math.max(lastPeriod, lastNewline);
+
+        if (breakPoint > 0) {
+          currentChunk = lastOverlap.slice(breakPoint + 1).trim() + "\n" + line;
+        } else {
+          currentChunk = line;
+        }
       }
+    } else {
+      currentChunk = potentialChunk;
     }
+  }
 
-    const trimmed = chunk.trim();
-    if (trimmed.length > 50) chunks.push(trimmed);
-
-    const step = chunk.length > overlap ? chunk.length - overlap : chunk.length;
-    start += step;
-    if (start >= text.length) break;
+  // Don't forget the last chunk
+  if (currentChunk.trim().length > 50) {
+    chunks.push(currentChunk.trim());
   }
 
   return chunks;
+}
+
+async function updateManualStatus(supabase: any, manualId: string, status: string, chunkCount?: number) {
+  const update: any = { status };
+  if (chunkCount !== undefined) {
+    update.chunk_count = chunkCount;
+    update.processed_at = new Date().toISOString();
+  }
+  
+  const { error } = await supabase
+    .from("manuals")
+    .update(update)
+    .eq("id", manualId);
+    
+  if (error) console.error("Failed to update manual status:", error);
 }
 
 serve(async (req) => {
@@ -63,8 +115,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let supabase: any;
+  let manualId: string | undefined;
+
   try {
-    const { manualId, pdfUrl } = await req.json();
+    const body = await req.json();
+    manualId = body.manualId;
+    const pdfUrl = body.pdfUrl;
 
     if (!manualId || !pdfUrl) {
       throw new Error("manualId and pdfUrl are required");
@@ -73,13 +130,18 @@ serve(async (req) => {
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase credentials not configured");
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Mark as processing
+    await updateManualStatus(supabase, manualId, "processing");
 
     console.log(`Processing PDF for manual ${manualId}`);
 
@@ -90,22 +152,17 @@ serve(async (req) => {
     }
 
     const pdfBuffer = await pdfResponse.arrayBuffer();
+    const pdfSize = pdfBuffer.byteLength;
+    console.log(`PDF size: ${(pdfSize / 1024 / 1024).toFixed(2)} MB`);
 
-    // Use pdf-parse alternative for Deno - extract text using pdfjs-dist
-    // For now, we'll use a simple approach with the Lovable AI to extract text
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    // Convert PDF to base64 for AI processing
+    // Convert PDF to base64
     const base64Pdf = btoa(
       new Uint8Array(pdfBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
     );
 
     console.log("Extracting text from PDF using AI...");
 
-    // Use Gemini to extract text from PDF
+    // Use Gemini Pro for better extraction quality
     const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -113,19 +170,32 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Extract ALL text content from this PDF document. Include everything: headers, body text, tables (format as text), lists, rules, and any other content. Preserve the structure with headings and sections. Do not summarize - extract the complete text verbatim."
+                text: `Extract ALL text content from this PDF document. This is a robotics competition game manual.
+
+CRITICAL INSTRUCTIONS:
+- Extract EVERYTHING verbatim - do not summarize or paraphrase
+- Preserve ALL rule numbers (like G1, G2, SG1, SG2, SC1, etc.)
+- Preserve section numbers and headers (like 1.1, 2.3.4, etc.)
+- Include page numbers where visible (format as [Page X])
+- Preserve table content (format as text with clear column separation)
+- Keep bullet points and numbered lists intact
+- Preserve emphasis (bold, italics) using markdown (**bold**, *italic*)
+- Include ALL definitions, notes, and warnings
+- Keep the hierarchical structure with proper indentation
+
+Output the complete extracted text maintaining the document structure.`
               },
               {
                 type: "file",
                 file: {
-                  filename: "document.pdf",
+                  filename: "manual.pdf",
                   file_data: `data:application/pdf;base64,${base64Pdf}`
                 }
               }
@@ -139,6 +209,13 @@ serve(async (req) => {
     if (!extractResponse.ok) {
       const errorText = await extractResponse.text();
       console.error("AI extraction error:", errorText);
+      
+      if (extractResponse.status === 429) {
+        throw new Error("Rate limit exceeded. Please try again in a few minutes.");
+      }
+      if (extractResponse.status === 402) {
+        throw new Error("API credits exhausted. Please add credits to continue.");
+      }
       throw new Error("Failed to extract text from PDF");
     }
 
@@ -161,49 +238,89 @@ serve(async (req) => {
       console.error("Error deleting old chunks:", deleteError);
     }
 
-    // Chunk the text
-    const chunks = chunkText(extractedText, 1200, 150);
+    // Chunk the text with better overlap for context preservation
+    const chunks = chunkText(extractedText, 1500, 250);
     console.log(`Created ${chunks.length} chunks`);
 
     let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
 
-    // Process chunks in batches
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    // Process chunks with batching and rate limiting
+    const batchSize = 5;
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
       
-      try {
-        const embedding = await generateEmbedding(chunk, OPENAI_API_KEY);
-        
-        const { error: insertError } = await supabase.from("document_chunks").insert({
-          content: chunk,
-          metadata: { chunk_index: i },
-          embedding,
-          manual_id: manualId,
-        });
+      const results = await Promise.allSettled(
+        batch.map(async (chunk, batchIndex) => {
+          const chunkIndex = i + batchIndex;
+          const embedding = await generateEmbedding(chunk, OPENAI_API_KEY);
+          
+          const { error: insertError } = await supabase.from("document_chunks").insert({
+            content: chunk,
+            metadata: { 
+              chunk_index: chunkIndex,
+              total_chunks: chunks.length,
+              char_count: chunk.length
+            },
+            embedding,
+            manual_id: manualId,
+          });
 
-        if (insertError) {
-          console.error(`Chunk ${i} insert error:`, insertError);
-        } else {
+          if (insertError) {
+            throw new Error(`Insert failed: ${insertError.message}`);
+          }
+          
+          return chunkIndex;
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
           successCount++;
+        } else {
+          errorCount++;
+          if (errors.length < 5) {
+            errors.push(result.reason?.message || "Unknown error");
+          }
         }
+      }
 
-        // Small delay to avoid rate limits
-        if (i % 5 === 0 && i > 0) {
-          await new Promise(r => setTimeout(r, 200));
-        }
-      } catch (err) {
-        console.error(`Chunk ${i} processing error:`, err);
+      // Progress log
+      console.log(`Processed ${Math.min(i + batchSize, chunks.length)}/${chunks.length} chunks`);
+
+      // Rate limiting delay between batches
+      if (i + batchSize < chunks.length) {
+        await new Promise(r => setTimeout(r, 300));
       }
     }
 
     console.log(`Successfully processed ${successCount}/${chunks.length} chunks`);
+    if (errorCount > 0) {
+      console.error(`Failed chunks: ${errorCount}`, errors);
+    }
+
+    // Update manual with final status
+    await updateManualStatus(supabase, manualId, "ready", successCount);
 
     return new Response(
-      JSON.stringify({ success: true, chunks: successCount }),
+      JSON.stringify({ 
+        success: true, 
+        chunks: successCount,
+        totalChunks: chunks.length,
+        errors: errorCount,
+        extractedLength: extractedText.length
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Ingest error:", error);
+    
+    // Update manual status to error if we have the supabase client and manualId
+    if (supabase && manualId) {
+      await updateManualStatus(supabase, manualId, "error");
+    }
+    
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

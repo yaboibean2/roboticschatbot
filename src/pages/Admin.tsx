@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
-import { Upload, Trash2, FileText, ArrowLeft } from "lucide-react";
+import { Upload, Trash2, FileText, ArrowLeft, RefreshCw, CheckCircle, AlertCircle, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
 
 interface Manual {
   id: string;
@@ -12,6 +13,9 @@ interface Manual {
   file_path: string;
   file_size: number | null;
   created_at: string;
+  chunk_count: number | null;
+  status: string | null;
+  processed_at: string | null;
 }
 
 export default function Admin() {
@@ -156,6 +160,43 @@ export default function Admin() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const getStatusBadge = (status: string | null, chunkCount: number | null) => {
+    switch (status) {
+      case "ready":
+        return (
+          <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            {chunkCount} chunks
+          </Badge>
+        );
+      case "processing":
+        return (
+          <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+            <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+            Processing
+          </Badge>
+        );
+      case "error":
+        return (
+          <Badge variant="secondary" className="bg-red-500/10 text-red-600 border-red-500/20">
+            <AlertCircle className="w-3 h-3 mr-1" />
+            Error
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="secondary" className="bg-muted text-muted-foreground">
+            <Clock className="w-3 h-3 mr-1" />
+            Pending
+          </Badge>
+        );
+    }
+  };
+
+  const handleReprocess = async (manual: Manual) => {
+    await processManual(manual.id, manual.file_path);
+  };
+
   return (
     <main className="min-h-screen bg-background p-6">
       <div className="max-w-2xl mx-auto space-y-6">
@@ -217,9 +258,9 @@ export default function Admin() {
                 key={manual.id}
                 className="flex items-center justify-between p-4 border border-border rounded-lg bg-card"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <FileText className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-foreground truncate">
                       {manual.name}
                     </p>
@@ -227,19 +268,32 @@ export default function Admin() {
                       {formatFileSize(manual.file_size)}
                     </p>
                   </div>
+                  {getStatusBadge(manual.status, manual.chunk_count)}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 ml-4">
                   {processingManualId === manual.id ? (
                     <span className="text-xs text-muted-foreground">Processing...</span>
                   ) : (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(manual)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <>
+                      {(manual.status === "error" || manual.status === "pending") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleReprocess(manual)}
+                          title="Reprocess"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(manual)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>

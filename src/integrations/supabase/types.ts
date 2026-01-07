@@ -51,27 +51,36 @@ export type Database = {
       }
       manuals: {
         Row: {
+          chunk_count: number | null
           created_at: string
           file_path: string
           file_size: number | null
           id: string
           name: string
+          processed_at: string | null
+          status: string | null
           updated_at: string
         }
         Insert: {
+          chunk_count?: number | null
           created_at?: string
           file_path: string
           file_size?: number | null
           id?: string
           name: string
+          processed_at?: string | null
+          status?: string | null
           updated_at?: string
         }
         Update: {
+          chunk_count?: number | null
           created_at?: string
           file_path?: string
           file_size?: number | null
           id?: string
           name?: string
+          processed_at?: string | null
+          status?: string | null
           updated_at?: string
         }
         Relationships: []
