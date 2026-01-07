@@ -197,18 +197,61 @@ serve(async (req) => {
       );
     }
 
-    // We need to inject page images into the response
-    // Create a TransformStream to append image data after stream completes
+    // Stream character by character for smooth typing effect
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
 
     (async () => {
       try {
+        let buffer = "";
+        
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          await writer.write(value);
+          
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE lines
+          let newlineIndex: number;
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+            
+            if (!line.startsWith("data: ") || line === "data: [DONE]") {
+              await writer.write(encoder.encode(line + "\n"));
+              continue;
+            }
+            
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr) continue;
+            
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              
+              if (content) {
+                // Stream each character as a separate event
+                for (const char of content) {
+                  const charEvent = {
+                    ...parsed,
+                    choices: [{
+                      ...parsed.choices[0],
+                      delta: { content: char }
+                    }]
+                  };
+                  await writer.write(encoder.encode(`data: ${JSON.stringify(charEvent)}\n\n`));
+                }
+              } else {
+                // Non-content events, pass through
+                await writer.write(encoder.encode(line + "\n"));
+              }
+            } catch {
+              await writer.write(encoder.encode(line + "\n"));
+            }
+          }
         }
 
         // After the AI stream completes, send page images as a custom event
@@ -218,9 +261,10 @@ serve(async (req) => {
             images: pageImageUrls,
             pageNumbers: pageNumbers,
           })}\n\n`;
-          await writer.write(new TextEncoder().encode(imageEvent));
+          await writer.write(encoder.encode(imageEvent));
         }
 
+        await writer.write(encoder.encode("data: [DONE]\n\n"));
         await writer.close();
       } catch (err) {
         console.error("Stream error:", err);
