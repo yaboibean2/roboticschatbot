@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -155,15 +156,8 @@ serve(async (req) => {
     const pdfSize = pdfBuffer.byteLength;
     console.log(`PDF size: ${(pdfSize / 1024 / 1024).toFixed(2)} MB`);
 
-    // Convert to base64 in chunks to handle larger files
-    const bytes = new Uint8Array(pdfBuffer);
-    let base64Pdf = '';
-    const chunkSize = 32768; // Process in 32KB chunks
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-      base64Pdf += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    base64Pdf = btoa(base64Pdf);
+    // Convert to base64 safely (required for PDF processing)
+    const base64Pdf = encodeBase64(pdfBuffer);
 
     console.log("Extracting text from PDF using AI...");
 
@@ -223,9 +217,32 @@ Output the complete extracted text maintaining the document structure.`
     }
 
     const extractData = await extractResponse.json();
-    const extractedText = extractData.choices?.[0]?.message?.content || "";
 
-    if (!extractedText || extractedText.length < 100) {
+    const content = extractData?.choices?.[0]?.message?.content;
+    const extractedText =
+      (typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content
+              .map((p: any) => (typeof p === "string" ? p : p?.text))
+              .filter(Boolean)
+              .join("\n")
+          : "") ||
+      (extractData?.candidates?.[0]?.content?.parts
+        ?.map((p: any) => p?.text)
+        .filter(Boolean)
+        .join("\n") ??
+        "");
+
+    if (!extractedText || extractedText.trim().length < 100) {
+      console.error(
+        "AI extraction returned empty/short text",
+        JSON.stringify({
+          hasChoices: !!extractData?.choices,
+          contentType: typeof content,
+          hasCandidates: !!extractData?.candidates,
+        })
+      );
       throw new Error("Could not extract sufficient text from PDF");
     }
 
