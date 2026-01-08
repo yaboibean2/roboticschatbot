@@ -5,6 +5,26 @@ interface WelcomeScreenProps {
   manualName?: string;
 }
 
+// Format manual name to "2024--crescendo" style
+const formatManualName = (name: string): string => {
+  const yearMatch = name.match(/20\d{2}/);
+  const year = yearMatch ? yearMatch[0] : "";
+  
+  const gameNames: Record<string, string> = {
+    "crescendo": "crescendo",
+    "reefscape": "reefscape",
+  };
+  
+  const lowerName = name.toLowerCase();
+  for (const [key, display] of Object.entries(gameNames)) {
+    if (lowerName.includes(key)) {
+      return year ? `${year}--${display}` : display;
+    }
+  }
+  
+  return name;
+};
+
 const suggestions = [
   "What are the game rules?",
   "How do scoring zones work?",
@@ -31,7 +51,7 @@ export function WelcomeScreen({ onSuggestionClick, manualName }: WelcomeScreenPr
       
       <p className="text-muted-foreground text-sm mb-8 text-center max-w-md">
         {manualName 
-          ? `Ask questions about "${manualName}"`
+          ? `Ask questions about "${formatManualName(manualName)}"`
           : "Select a game manual to get started"}
       </p>
 

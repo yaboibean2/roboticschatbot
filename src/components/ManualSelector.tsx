@@ -13,6 +13,29 @@ interface Manual {
   name: string;
 }
 
+// Format manual name to "2024--crescendo" style
+const formatManualName = (name: string): string => {
+  // Try to extract year and game name from filename
+  const yearMatch = name.match(/20\d{2}/);
+  const year = yearMatch ? yearMatch[0] : "";
+  
+  // Common game names to look for
+  const gameNames: Record<string, string> = {
+    "crescendo": "crescendo",
+    "reefscape": "reefscape",
+  };
+  
+  const lowerName = name.toLowerCase();
+  for (const [key, display] of Object.entries(gameNames)) {
+    if (lowerName.includes(key)) {
+      return year ? `${year}--${display}` : display;
+    }
+  }
+  
+  // Fallback: just return original name
+  return name;
+};
+
 interface ManualSelectorProps {
   selectedManualId: string | null;
   onSelectManual: (id: string | null) => void;
@@ -61,7 +84,7 @@ export function ManualSelector({ selectedManualId, onSelectManual }: ManualSelec
       <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card/50 text-sm text-foreground hover:bg-accent/50 transition-colors">
         <FileText className="w-4 h-4 text-muted-foreground" />
         <span className="max-w-[200px] truncate">
-          {selectedManual?.name || "Select Manual"}
+          {selectedManual ? formatManualName(selectedManual.name) : "Select Manual"}
         </span>
         <ChevronDown className="w-4 h-4 text-muted-foreground" />
       </DropdownMenuTrigger>
@@ -73,7 +96,7 @@ export function ManualSelector({ selectedManualId, onSelectManual }: ManualSelec
             className={selectedManualId === manual.id ? "bg-accent" : ""}
           >
             <FileText className="w-4 h-4 mr-2" />
-            <span className="truncate">{manual.name}</span>
+            <span className="truncate">{formatManualName(manual.name)}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
