@@ -26,8 +26,14 @@ export function useChat(manualId: string | null) {
       const userMessage: Message = { role: "user", content: trimmed };
       const currentMessages: Message[] = [...messagesRef.current, userMessage];
 
-      setMessages(currentMessages);
-      messagesRef.current = currentMessages;
+      // Add user message and empty assistant message for loading state
+      const messagesWithPlaceholder: Message[] = [
+        ...currentMessages,
+        { role: "assistant", content: "" },
+      ];
+
+      setMessages(messagesWithPlaceholder);
+      messagesRef.current = messagesWithPlaceholder;
 
       setIsLoading(true);
 
