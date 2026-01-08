@@ -49,8 +49,14 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
   return data.data[0].embedding;
 }
 
+interface ChunkWithPage {
+  content: string;
+  pageNumber: number | null;
+}
+
 interface RetrievalResult {
   context: string;
+  chunks: ChunkWithPage[];
   pageNumbers: number[];
 }
 
@@ -72,19 +78,31 @@ async function retrieveRelevantChunks(
 
     if (error) {
       console.error("Error retrieving chunks:", error);
-      return { context: "", pageNumbers: [] };
+      return { context: "", chunks: [], pageNumbers: [] };
     }
 
     if (!chunks || chunks.length === 0) {
       console.log("No relevant chunks found");
-      return { context: "", pageNumbers: [] };
+      return { context: "", chunks: [], pageNumbers: [] };
     }
 
     console.log(`Retrieved ${chunks.length} chunks`);
 
-    // Extract page numbers from chunk content
+    // Extract page numbers from each chunk and build chunk list with pages
     const pageNumbers = new Set<number>();
+    const chunksWithPages: ChunkWithPage[] = [];
+    
     for (const chunk of chunks) {
+      // Find first page number in chunk
+      const pageMatch = chunk.content.match(/---\s*Page\s+(\d+)\s*---/i);
+      const pageNum = pageMatch ? parseInt(pageMatch[1], 10) : null;
+      
+      chunksWithPages.push({
+        content: chunk.content,
+        pageNumber: pageNum,
+      });
+      
+      // Collect all page numbers
       const matches = chunk.content.matchAll(/---\s*Page\s+(\d+)\s*---/gi);
       for (const match of matches) {
         pageNumbers.add(parseInt(match[1], 10));
@@ -97,11 +115,12 @@ async function retrieveRelevantChunks(
 
     return {
       context: `\n\nRELEVANT MANUAL CONTENT:\n\n${formattedChunks}`,
-      pageNumbers: Array.from(pageNumbers).sort((a, b) => a - b).slice(0, 5), // Max 5 pages
+      chunks: chunksWithPages,
+      pageNumbers: Array.from(pageNumbers).sort((a, b) => a - b).slice(0, 10), // Max 10 pages
     };
   } catch (err) {
     console.error("Semantic search error:", err);
-    return { context: "", pageNumbers: [] };
+    return { context: "", chunks: [], pageNumbers: [] };
   }
 }
 
@@ -144,21 +163,22 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { context: knowledgeBase, pageNumbers } = await retrieveRelevantChunks(
+    const { context: knowledgeBase, chunks, pageNumbers } = await retrieveRelevantChunks(
       supabase,
       latestUserMessage,
       manualId,
       OPENAI_API_KEY
     );
 
-    // Build page image URLs
-    const pageImageUrls = pageNumbers.map(
-      (pageNum) => `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`
-    );
+    // Build page image data with URLs and page numbers
+    const pageImageData = pageNumbers.map((pageNum) => ({
+      url: `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`,
+      pageNumber: pageNum,
+    }));
 
     const systemPrompt = SYSTEM_PROMPT + knowledgeBase;
 
-    console.log("Sending request with", messages.length, "messages,", pageNumbers.length, "page images");
+    console.log("Sending request with", messages.length, "messages,", pageImageData.length, "page images");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -255,11 +275,10 @@ serve(async (req) => {
         }
 
         // After the AI stream completes, send page images as a custom event
-        if (pageImageUrls.length > 0) {
+        if (pageImageData.length > 0) {
           const imageEvent = `data: ${JSON.stringify({
             type: "page_images",
-            images: pageImageUrls,
-            pageNumbers: pageNumbers,
+            pages: pageImageData,
           })}\n\n`;
           await writer.write(encoder.encode(imageEvent));
         }

@@ -3,12 +3,17 @@ import ReactMarkdown from "react-markdown";
 import { memo, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 
+type PageImage = {
+  url: string;
+  pageNumber: number;
+};
+
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
   isStreaming?: boolean;
   onFollowUpClick?: (question: string) => void;
-  pageImages?: string[];
+  pageImages?: PageImage[];
 }
 
 export const ChatMessage = memo(function ChatMessage({ 
@@ -19,7 +24,7 @@ export const ChatMessage = memo(function ChatMessage({
   pageImages 
 }: ChatMessageProps) {
   const isUser = role === "user";
-  const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [expandedImage, setExpandedImage] = useState<PageImage | null>(null);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
@@ -53,7 +58,7 @@ export const ChatMessage = memo(function ChatMessage({
   const { mainContent, followUps } = isUser ? { mainContent: content, followUps: [] } : parseFollowUps(content);
 
   // Filter out failed images
-  const validImages = pageImages?.filter(url => !failedImages.has(url)) || [];
+  const validImages = pageImages?.filter(img => !failedImages.has(img.url)) || [];
 
   const handleImageError = (url: string) => {
     setFailedImages(prev => new Set(prev).add(url));
@@ -141,28 +146,23 @@ export const ChatMessage = memo(function ChatMessage({
               <span>Referenced pages from the manual</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {validImages.map((url, idx) => {
-                const pageMatch = url.match(/page_(\d+)\.jpg/);
-                const pageNum = pageMatch ? pageMatch[1] : idx + 1;
-                
-                return (
-                  <button
-                    key={url}
-                    onClick={() => setExpandedImage(expandedImage === url ? null : url)}
-                    className="relative group"
-                  >
-                    <img
-                      src={url}
-                      alt={`Page ${pageNum}`}
-                      className="w-24 h-32 object-cover rounded-lg border border-border hover:border-primary/50 transition-colors cursor-pointer"
-                      onError={() => handleImageError(url)}
-                    />
-                    <div className="absolute bottom-1 left-1 bg-background/80 backdrop-blur-sm text-xs px-1.5 py-0.5 rounded">
-                      Page {pageNum}
-                    </div>
-                  </button>
-                );
-              })}
+              {validImages.map((img) => (
+                <button
+                  key={img.url}
+                  onClick={() => setExpandedImage(expandedImage?.url === img.url ? null : img)}
+                  className="relative group"
+                >
+                  <img
+                    src={img.url}
+                    alt={`Page ${img.pageNumber}`}
+                    className="w-24 h-32 object-cover rounded-lg border border-border hover:border-primary/50 transition-colors cursor-pointer"
+                    onError={() => handleImageError(img.url)}
+                  />
+                  <div className="absolute bottom-1 left-1 bg-background/80 backdrop-blur-sm text-xs px-1.5 py-0.5 rounded">
+                    Page {img.pageNumber}
+                  </div>
+                </button>
+              ))}
             </div>
             
             {/* Expanded image view */}
@@ -172,9 +172,12 @@ export const ChatMessage = memo(function ChatMessage({
                 onClick={() => setExpandedImage(null)}
               >
                 <div className="relative max-w-4xl max-h-[90vh] overflow-auto">
+                  <div className="absolute top-2 left-2 bg-background/90 text-foreground rounded-full px-3 py-1 text-sm font-medium">
+                    Page {expandedImage.pageNumber}
+                  </div>
                   <img
-                    src={expandedImage}
-                    alt="Expanded page"
+                    src={expandedImage.url}
+                    alt={`Page ${expandedImage.pageNumber}`}
                     className="rounded-lg shadow-2xl max-w-full max-h-[85vh] object-contain"
                   />
                   <button
