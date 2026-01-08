@@ -1,6 +1,7 @@
-import { User, Bot, Image as ImageIcon } from "lucide-react";
+import { User, Bot, Image as ImageIcon, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { memo, useState } from "react";
+import { toast } from "@/hooks/use-toast";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -20,6 +21,14 @@ export const ChatMessage = memo(function ChatMessage({
   const isUser = role === "user";
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+    toast({ description: "Copied to clipboard" });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // Parse follow-up questions from content
   const parseFollowUps = (text: string) => {
@@ -107,6 +116,21 @@ export const ChatMessage = memo(function ChatMessage({
             )}
           </div>
         </div>
+        
+        {/* Copy button for assistant messages */}
+        {!isUser && content && !isStreaming && (
+          <button
+            onClick={handleCopy}
+            className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-green-500" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        )}
         
         {/* Page images */}
         {!isUser && validImages.length > 0 && !isStreaming && (
