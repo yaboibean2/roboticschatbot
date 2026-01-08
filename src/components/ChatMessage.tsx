@@ -94,10 +94,13 @@ export const ChatMessage = memo(function ChatMessage({
                   </ReactMarkdown>
                 </div>
                 {isStreaming && !content && (
-                  <div className="flex items-center gap-1 py-1">
-                    <div className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-pulse" />
-                    <div className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-pulse [animation-delay:150ms]" />
-                    <div className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-pulse [animation-delay:300ms]" />
+                  <div className="flex items-center gap-1.5 py-1 text-muted-foreground">
+                    <span className="text-sm animate-pulse">Thinking</span>
+                    <span className="flex gap-0.5">
+                      <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:300ms]" />
+                    </span>
                   </div>
                 )}
               </>
