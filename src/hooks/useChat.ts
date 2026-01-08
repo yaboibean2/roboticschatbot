@@ -1,10 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
 
+type PageImage = {
+  url: string;
+  pageNumber: number;
+};
+
 type Message = {
   role: "user" | "assistant";
   content: string;
-  pageImages?: string[];
+  pageImages?: PageImage[];
 };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
@@ -63,7 +68,7 @@ export function useChat(manualId: string | null) {
         const decoder = new TextDecoder();
         let textBuffer = "";
         let assistantContent = "";
-        let pageImages: string[] = [];
+        let pageImages: PageImage[] = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -87,8 +92,8 @@ export function useChat(manualId: string | null) {
               const parsed = JSON.parse(jsonStr);
               
               // Check for page_images event
-              if (parsed.type === "page_images" && Array.isArray(parsed.images)) {
-                pageImages = parsed.images;
+              if (parsed.type === "page_images" && Array.isArray(parsed.pages)) {
+                pageImages = parsed.pages;
                 // Update the assistant message with images
                 setMessages((prev) => {
                   const last = prev[prev.length - 1];
@@ -135,8 +140,8 @@ export function useChat(manualId: string | null) {
               const parsed = JSON.parse(jsonStr);
               
               // Check for page_images event
-              if (parsed.type === "page_images" && Array.isArray(parsed.images)) {
-                pageImages = parsed.images;
+              if (parsed.type === "page_images" && Array.isArray(parsed.pages)) {
+                pageImages = parsed.pages;
                 continue;
               }
               
