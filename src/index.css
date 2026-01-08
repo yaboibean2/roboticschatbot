@@ -112,3 +112,25 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/30;
 }
+
+/* Smooth streaming cursor animation */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: '▊';
+  animation: blink 1s infinite;
+  @apply text-primary ml-0.5;
+}
+
+/* Smooth text appearance */
+@keyframes text-appear {
+  from { opacity: 0.7; }
+  to { opacity: 1; }
+}
+
+.streaming-text {
+  animation: text-appear 0.15s ease-out;
+}

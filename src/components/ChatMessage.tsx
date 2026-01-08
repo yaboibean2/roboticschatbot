@@ -83,26 +83,7 @@ export const ChatMessage = memo(function ChatMessage({
               <p className="whitespace-pre-wrap m-0">{content}</p>
             ) : (
               <>
-                <div className="prose prose-sm max-w-none prose-p:my-1.5 prose-strong:text-foreground prose-em:text-foreground/90 [&_p]:text-foreground [&_li]:text-foreground">
-                  <ReactMarkdown
-                    components={{
-                      p: ({ children }) => <p className="my-1.5 first:mt-0 last:mb-0">{children}</p>,
-                      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                      em: ({ children }) => <em className="italic">{children}</em>,
-                      ul: ({ children }) => <ul className="list-disc pl-4 my-1.5">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal pl-4 my-1.5">{children}</ol>,
-                      li: ({ children }) => <li className="my-0.5">{children}</li>,
-                      blockquote: ({ children }) => (
-                        <blockquote className="border-l-2 border-primary/50 pl-3 my-2 italic bg-primary/5 py-1 rounded-r">
-                          {children}
-                        </blockquote>
-                      ),
-                    }}
-                  >
-                    {mainContent}
-                  </ReactMarkdown>
-                </div>
-                {isStreaming && !content && (
+                {isStreaming && !content ? (
                   <div className="flex items-center gap-1.5 py-1 text-muted-foreground">
                     <span className="text-sm animate-pulse">Thinking</span>
                     <span className="flex gap-0.5">
@@ -110,6 +91,26 @@ export const ChatMessage = memo(function ChatMessage({
                       <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:150ms]" />
                       <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:300ms]" />
                     </span>
+                  </div>
+                ) : (
+                  <div className={`prose prose-sm max-w-none prose-p:my-1.5 prose-strong:text-foreground prose-em:text-foreground/90 [&_p]:text-foreground [&_li]:text-foreground ${isStreaming ? 'streaming-cursor' : ''}`}>
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p className="my-1.5 first:mt-0 last:mb-0">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        em: ({ children }) => <em className="italic">{children}</em>,
+                        ul: ({ children }) => <ul className="list-disc pl-4 my-1.5">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal pl-4 my-1.5">{children}</ol>,
+                        li: ({ children }) => <li className="my-0.5">{children}</li>,
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-2 border-primary/50 pl-3 my-2 italic bg-primary/5 py-1 rounded-r">
+                            {children}
+                          </blockquote>
+                        ),
+                      }}
+                    >
+                      {mainContent}
+                    </ReactMarkdown>
                   </div>
                 )}
               </>
