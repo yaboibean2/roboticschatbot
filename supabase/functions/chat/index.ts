@@ -255,18 +255,18 @@ serve(async (req) => {
               const content = parsed.choices?.[0]?.delta?.content;
               
               if (content) {
-                // Stream each character with a tiny delay for smooth typewriter effect
-                for (const char of content) {
-                  const charEvent = {
+                // Stream in small word-sized groups for smooth but fast typing
+                const tokens = content.match(/\S+\s*|\s+/g) ?? [content];
+                for (const token of tokens) {
+                  const tokenEvent = {
                     ...parsed,
                     choices: [{
                       ...parsed.choices[0],
-                      delta: { content: char }
+                      delta: { content: token }
                     }]
                   };
-                  await writer.write(encoder.encode(`data: ${JSON.stringify(charEvent)}\n\n`));
-                  // Small delay between characters for smoother visual streaming
-                  await new Promise((r) => setTimeout(r, 8));
+                  await writer.write(encoder.encode(`data: ${JSON.stringify(tokenEvent)}\n\n`));
+                  await new Promise((r) => setTimeout(r, 2));
                 }
               } else {
                 // Non-content events, pass through
