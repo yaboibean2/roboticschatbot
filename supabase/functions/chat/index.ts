@@ -255,7 +255,7 @@ serve(async (req) => {
               const content = parsed.choices?.[0]?.delta?.content;
               
               if (content) {
-                // Stream each character as a separate event
+                // Stream each character with a tiny delay for smooth typewriter effect
                 for (const char of content) {
                   const charEvent = {
                     ...parsed,
@@ -265,6 +265,8 @@ serve(async (req) => {
                     }]
                   };
                   await writer.write(encoder.encode(`data: ${JSON.stringify(charEvent)}\n\n`));
+                  // Small delay between characters for smoother visual streaming
+                  await new Promise((r) => setTimeout(r, 8));
                 }
               } else {
                 // Non-content events, pass through
