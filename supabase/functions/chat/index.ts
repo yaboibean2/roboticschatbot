@@ -170,11 +170,13 @@ serve(async (req) => {
       OPENAI_API_KEY
     );
 
-    // Build page image data with URLs and page numbers
-    const pageImageData = pageNumbers.map((pageNum) => ({
-      url: `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`,
-      pageNumber: pageNum,
-    }));
+    // Build page image data with URLs and page numbers (show 2 fewer screenshots)
+    const pageImageData = pageNumbers
+      .map((pageNum) => ({
+        url: `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`,
+        pageNumber: pageNum,
+      }))
+      .slice(0, Math.max(0, pageNumbers.length - 2));
 
     const systemPrompt = SYSTEM_PROMPT + knowledgeBase;
 
@@ -253,7 +255,7 @@ serve(async (req) => {
               const content = parsed.choices?.[0]?.delta?.content;
               
               if (content) {
-                // Stream each character as a separate event
+                // Stream each character with a tiny delay for smooth typewriter effect
                 for (const char of content) {
                   const charEvent = {
                     ...parsed,
@@ -263,6 +265,8 @@ serve(async (req) => {
                     }]
                   };
                   await writer.write(encoder.encode(`data: ${JSON.stringify(charEvent)}\n\n`));
+                  // Small delay between characters for smoother visual streaming
+                  await new Promise((r) => setTimeout(r, 8));
                 }
               } else {
                 // Non-content events, pass through
