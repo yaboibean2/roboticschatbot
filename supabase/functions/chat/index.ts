@@ -17,9 +17,10 @@ CRITICAL INSTRUCTIONS:
 - If you see "--- Page X ---" markers in the content, use those page numbers in citations
 - When you reference a specific page, include it like: [See Page X] so images can be shown
 - If the answer is not in the provided context, say "I don't have that information in the current manual"
-- Be thorough - include all relevant details from the manual
-- Use bullet points for lists of rules or requirements
-- Structure your response with quotes first, then explanation
+- Be CONCISE - keep answers short and focused; include only the most relevant quote(s) and a brief explanation
+- Aim for under 150 words when possible
+- Use bullet points only when listing multiple rules or requirements
+- Lead with the key quote, then a one or two sentence explanation
 - After your answer, include 3 follow-up questions in this format:
   [followups]
   - Question 1
@@ -88,24 +89,28 @@ async function retrieveRelevantChunks(
 
     console.log(`Retrieved ${chunks.length} chunks`);
 
-    // Extract page numbers from each chunk and build chunk list with pages
-    const pageNumbers = new Set<number>();
+    // Extract page numbers ranked by chunk relevance (chunks come back ranked by similarity)
+    const rankedPages: number[] = [];
+    const seenPages = new Set<number>();
     const chunksWithPages: ChunkWithPage[] = [];
-    
+
     for (const chunk of chunks) {
-      // Find first page number in chunk
       const pageMatch = chunk.content.match(/---\s*Page\s+(\d+)\s*---/i);
       const pageNum = pageMatch ? parseInt(pageMatch[1], 10) : null;
-      
+
       chunksWithPages.push({
         content: chunk.content,
         pageNumber: pageNum,
       });
-      
-      // Collect all page numbers
+
+      // Preserve relevance order — first occurrence wins
       const matches = chunk.content.matchAll(/---\s*Page\s+(\d+)\s*---/gi);
       for (const match of matches) {
-        pageNumbers.add(parseInt(match[1], 10));
+        const p = parseInt(match[1], 10);
+        if (!seenPages.has(p)) {
+          seenPages.add(p);
+          rankedPages.push(p);
+        }
       }
     }
 
@@ -116,7 +121,7 @@ async function retrieveRelevantChunks(
     return {
       context: `\n\nRELEVANT MANUAL CONTENT:\n\n${formattedChunks}`,
       chunks: chunksWithPages,
-      pageNumbers: Array.from(pageNumbers).sort((a, b) => a - b).slice(0, 10), // Max 10 pages
+      pageNumbers: rankedPages, // Ordered by relevance, capped downstream
     };
   } catch (err) {
     console.error("Semantic search error:", err);
@@ -170,13 +175,13 @@ serve(async (req) => {
       OPENAI_API_KEY
     );
 
-    // Build page image data with URLs and page numbers (show 2 fewer screenshots)
+    // Build page image data using the 5 most relevant pages (ranked by chunk similarity)
     const pageImageData = pageNumbers
+      .slice(0, 5)
       .map((pageNum) => ({
         url: `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`,
         pageNumber: pageNum,
-      }))
-      .slice(0, Math.max(0, pageNumbers.length - 2));
+      }));
 
     const systemPrompt = SYSTEM_PROMPT + knowledgeBase;
 
