@@ -175,13 +175,13 @@ serve(async (req) => {
       OPENAI_API_KEY
     );
 
-    // Build page image data with URLs and page numbers (show 2 fewer screenshots)
+    // Build page image data using the 5 most relevant pages (ranked by chunk similarity)
     const pageImageData = pageNumbers
+      .slice(0, 5)
       .map((pageNum) => ({
         url: `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`,
         pageNumber: pageNum,
-      }))
-      .slice(0, Math.max(0, pageNumbers.length - 2));
+      }));
 
     const systemPrompt = SYSTEM_PROMPT + knowledgeBase;
 
