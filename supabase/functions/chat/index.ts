@@ -170,11 +170,13 @@ serve(async (req) => {
       OPENAI_API_KEY
     );
 
-    // Build page image data with URLs and page numbers
-    const pageImageData = pageNumbers.map((pageNum) => ({
-      url: `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`,
-      pageNumber: pageNum,
-    }));
+    // Build page image data with URLs and page numbers (show 2 fewer screenshots)
+    const pageImageData = pageNumbers
+      .map((pageNum) => ({
+        url: `${SUPABASE_URL}/storage/v1/object/public/manuals/${manualId}/pages/page_${pageNum}.jpg`,
+        pageNumber: pageNum,
+      }))
+      .slice(0, Math.max(0, pageNumbers.length - 2));
 
     const systemPrompt = SYSTEM_PROMPT + knowledgeBase;
 
